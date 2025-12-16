@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TradeMind CIO</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #0f172a; /* Slate 900 */
+        color: #f8fafc; /* Slate 50 */
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      /* Custom scrollbar for history sidebar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1e293b; 
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 3px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+      }
+      .fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+
+    <!-- Import Map for Google GenAI SDK -->
+    <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@0.1.3",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div class="flex items-center gap-3 cursor-pointer" onclick="app.resetToForm()">
+            <div class="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/50">
+              <i data-lucide="line-chart" class="text-white w-6 h-6"></i>
+            </div>
+            <div>
+              <h1 class="text-xl font-bold tracking-tight text-white">TradeMind CIO</h1>
+              <p class="text-xs text-slate-400 font-mono tracking-wider">QUANTITATIVE COACH</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 text-sm text-slate-500 font-mono">
+             <span>V 2.0.0 (Vanilla)</span>
+          </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <main class="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 flex-1 w-full">
+        
+        <!-- Sidebar -->
+        <aside class="lg:col-span-3 space-y-4">
+          <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 h-[calc(100vh-8rem)] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                  <i data-lucide="briefcase" class="w-4 h-4"></i> Trade Journal
+                </h3>
+                <button onclick="app.resetToForm()" class="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded transition-colors">
+                    + New
+                </button>
+            </div>
+            <div id="history-list" class="space-y-3 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                <!-- History Items Injected Here -->
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="lg:col-span-9" id="main-content">
+            <!-- Dynamic Content Injected Here (Form or Result) -->
+        </div>
+
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script type="module">
+        import { GoogleGenAI, Type } from "@google/genai";
+
+        // --- CONSTANTS ---
+        const CIO_SYSTEM_INSTRUCTION = `
+            You are a Senior Chief Investment Officer (CIO) & Trading Psychology Coach with a background in top Wall Street quantitative hedge funds. 
+            Your goal is to perform a ruthless, deep analysis of the user's trade.
+
+            **Core Philosophy:**
+            - Look beyond single-trade P&L. Focus on system consistency and Expected Value (EV).
+            - Analyze four dimensions: Logic, Execution, Risk, Psychology.
+
+            **Output Format:**
+            You must return a JSON object adhering strictly to the schema provided. 
+            The content of the analysis must be in Chinese (Simplified), as the user persona described in the prompt is Chinese.
+
+            **Analysis Logic:**
+            1. **Categorization:**
+            - Determine the trade type (Trend, Mean Reversion, Event, etc.).
+            - Assign a Matrix Code:
+                - A: Good Process, Good Result (Reinforce)
+                - B: Good Process, Bad Result (Console/Encourage)
+                - C: Bad Process, Good Result (WARN SEVERELY - Luck)
+                - D: Bad Process, Bad Result (Deep Reflection)
+
+            2. **Diagnosis:**
+            - Attribution: Alpha (Skill), Beta (Market), or Luck.
+            - Counterfactual: What should have been done in a perfect system?
+
+            3. **Scoring (0-10):**
+            - Logic (40%)
+            - Execution (30%)
+            - Risk (30%)
+            
+            4. **Psychology:** Analyze the emotional state and behavioral biases (FOMO, Disposition Effect, etc.).
+
+            5. **Action Plan:** Provide 2 concrete, actionable improvements.
+
+            **Tone:**
+            Objective, sharp, professional, data-driven. Do not compliment luck. Be harsh on bad logic even if profitable.
+        `;
+
+        // --- STATE MANAGEMENT ---
+        const state = {
+            history: [],
+            isLoading: false,
+            currentView: 'form', // 'form' | 'result'
+            currentAnalysis: null,
+            error: null
+        };
+
+        // --- INITIALIZATION ---
+        window.addEventListener('DOMContentLoaded', () => {
+            loadHistory();
+            render();
+            lucide.createIcons();
+        });
+
+        // --- DOM RENDERERS ---
+
+        function render() {
+            renderHistory();
+            const mainContent = document.getElementById('main-content');
+            mainContent.innerHTML = '';
+
+            if (state.error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = "p-4 bg-rose-500/10 border border-rose-500/50 rounded-lg text-rose-400 text-sm mb-4";
+                errorDiv.textContent = state.error;
+                mainContent.appendChild(errorDiv);
+            }
+
+            if (state.currentView === 'form') {
+                mainContent.innerHTML += renderForm();
+                // Re-attach event listeners for form
+                document.getElementById('trade-form').addEventListener('submit', handleAnalyze);
+            } else if (state.currentView === 'result' && state.currentAnalysis) {
+                mainContent.innerHTML += renderAnalysis(state.currentAnalysis);
+            }
+
+            lucide.createIcons();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            if (state.history.length === 0) {
+                list.innerHTML = `<div class="text-slate-500 text-sm text-center py-10 italic">No trades logged yet.</div>`;
+                return;
+            }
+
+            list.innerHTML = state.history.map(item => {
+                const matrixCode = item.analysis.categorization.matrixCode;
+                let badgeClass = '';
+                switch(matrixCode) {
+                    case 'A': badgeClass = 'text-emerald-400 bg-emerald-400/10'; break;
+                    case 'B': badgeClass = 'text-blue-400 bg-blue-400/10'; break;
+                    case 'C': badgeClass = 'text-rose-400 bg-rose-400/10'; break;
+                    case 'D': badgeClass = 'text-amber-400 bg-amber-400/10'; break;
+                }
+
+                return `
+                <div onclick="app.viewTrade('${item.id}')" 
+                    class="bg-slate-800 hover:bg-slate-700 border border-slate-700 p-3 rounded-lg cursor-pointer transition-colors group">
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="font-mono font-bold text-slate-200">${item.input.ticker}</span>
+                        <span class="text-xs font-bold px-2 py-0.5 rounded ${badgeClass}">${matrixCode}</span>
+                    </div>
+                    <div class="flex justify-between items-end">
+                        <div class="text-xs text-slate-400 flex items-center gap-1">
+                            <i data-lucide="clock" class="w-3 h-3"></i>
+                            ${new Date(item.timestamp).toLocaleDateString()}
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-600 group-hover:text-emerald-400 transition-colors"></i>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function renderForm() {
+            return `
+            <div class="bg-slate-800/30 p-1 rounded-xl fade-in">
+                <form id="trade-form" class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+                        <span class="text-emerald-400">INPUT</span> // 交易录入
+                    </h2>
+
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">TICKER (标的)</label>
+                        <input type="text" name="ticker" required placeholder="e.g. NVDA"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                        </div>
+                        <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">ACTION (操作)</label>
+                        <input type="text" name="action" required placeholder="e.g. Buy / Sell"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">PRICE (价格)</label>
+                        <input type="text" name="price" placeholder="e.g. 120.50"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                        </div>
+                        <div>
+                        <label class="block text-xs font-mono text-slate-400 mb-1">QUANTITY (数量)</label>
+                        <input type="text" name="quantity" placeholder="e.g. 100"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-xs font-mono text-slate-400 mb-1">RATIONALE (交易逻辑/理由)</label>
+                        <textarea name="rationale" required rows="3" placeholder="为什么开这一单？技术面？基本面？消息？"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none text-sm"></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-xs font-mono text-slate-400 mb-1">RESULT (结果/现状)</label>
+                        <textarea name="result" required rows="2" placeholder="浮盈10%？已止损？"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none text-sm"></textarea>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-xs font-mono text-slate-400 mb-1">REFLECTION (自我反思/心理)</label>
+                        <textarea name="reflection" required rows="2" placeholder="当时心情如何？是否害怕？是否贪婪？"
+                            class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-100 focus:border-emerald-500 focus:outline-none text-sm"></textarea>
+                    </div>
+
+                    <button type="submit" ${state.isLoading ? 'disabled' : ''}
+                        class="w-full py-3 rounded font-bold tracking-wider flex items-center justify-center gap-2 transition-all
+                        ${state.isLoading 
+                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed' 
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/50'
+                        }">
+                        ${state.isLoading 
+                            ? `<i data-lucide="loader-2" class="animate-spin w-5 h-5"></i> ANALYZING...` 
+                            : `<i data-lucide="send" class="w-5 h-5"></i> SUBMIT FOR REVIEW`
+                        }
+                    </button>
+                </form>
+            </div>
+            `;
+        }
+
+        function renderAnalysis(item) {
+            const { analysis, input, timestamp } = item;
+            const matrixCode = analysis.categorization.matrixCode;
+            
+            let matrixColor = 'bg-slate-800 border-slate-700';
+            let matrixTitle = '';
+            if (matrixCode === 'A') { matrixColor = 'bg-emerald-500/10 border-emerald-500 text-emerald-400'; matrixTitle = '好交易·好结果 (Alpha)'; }
+            else if (matrixCode === 'B') { matrixColor = 'bg-blue-500/10 border-blue-500 text-blue-400'; matrixTitle = '好交易·坏结果 (Variance)'; }
+            else if (matrixCode === 'C') { matrixColor = 'bg-rose-500/10 border-rose-500 text-rose-400'; matrixTitle = '坏交易·好结果 (Toxic Luck)'; }
+            else if (matrixCode === 'D') { matrixColor = 'bg-amber-500/10 border-amber-500 text-amber-400'; matrixTitle = '坏交易·坏结果 (Tuition)'; }
+
+            // Score bars helper
+            const renderBar = (label, val) => {
+                const color = val >= 7 ? 'bg-emerald-500' : val >= 5 ? 'bg-amber-500' : 'bg-rose-500';
+                return `
+                    <div class="flex items-center text-sm mb-2">
+                        <span class="w-20 text-slate-400 font-mono">${label}</span>
+                        <div class="flex-1 h-3 bg-slate-700 rounded overflow-hidden mx-2">
+                            <div style="width: ${val*10}%" class="h-full ${color}"></div>
+                        </div>
+                        <span class="w-8 text-right font-bold text-slate-200">${val}</span>
+                    </div>
+                `;
+            };
+
+            return `
+            <div class="space-y-6 fade-in">
+                <div class="flex items-center justify-between">
+                     <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="layout-dashboard" class="w-6 h-6 text-emerald-500"></i>
+                        ANALYSIS REPORT: <span class="font-mono text-emerald-400">${input.ticker}</span>
+                     </h2>
+                     <span class="text-slate-500 text-sm font-mono">${new Date(timestamp).toLocaleString()}</span>
+                </div>
+
+                <!-- Matrix Header -->
+                <div class="p-6 rounded-xl border-l-4 shadow-lg ${matrixColor} bg-slate-800">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="text-xs font-mono opacity-75 mb-1">CLASSIFICATION</div>
+                            <h2 class="text-3xl font-bold mb-2">${matrixCode}</h2>
+                            <h3 class="text-xl font-semibold flex items-center gap-2">${matrixTitle}</h3>
+                            <p class="mt-2 text-sm opacity-90">${analysis.categorization.matrixDescription}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs font-mono opacity-75 mb-1">TOTAL SCORE</div>
+                            <div class="text-4xl font-bold font-mono tracking-tighter">
+                                ${analysis.scoring.total}<span class="text-lg text-slate-500">/10</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Scoring -->
+                    <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                        <h3 class="text-slate-400 text-xs font-mono mb-4 flex items-center gap-2">
+                             <i data-lucide="activity" class="w-4 h-4"></i> PERFORMANCE METRICS
+                        </h3>
+                        <div class="py-4">
+                            ${renderBar('Logic', analysis.scoring.logic)}
+                            ${renderBar('Execution', analysis.scoring.execution)}
+                            ${renderBar('Risk', analysis.scoring.risk)}
+                        </div>
+                        <p class="text-xs text-slate-500 mt-2 italic border-t border-slate-700 pt-2">"${analysis.scoring.summary}"</p>
+                    </div>
+
+                    <!-- Diagnosis -->
+                    <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 flex flex-col justify-center">
+                        <h3 class="text-slate-400 text-xs font-mono mb-4 flex items-center gap-2">
+                             <i data-lucide="trending-up" class="w-4 h-4"></i> DIAGNOSIS
+                        </h3>
+                        <div class="space-y-4">
+                            <div>
+                                <span class="text-xs font-bold text-slate-500 uppercase">Attribution</span>
+                                <p class="text-lg font-medium text-slate-200">${analysis.diagnosis.attribution}</p>
+                            </div>
+                            <div>
+                                <span class="text-xs font-bold text-slate-500 uppercase">Counterfactual</span>
+                                <p class="text-sm text-slate-300 leading-relaxed border-l-2 border-slate-600 pl-3 mt-1">
+                                    ${analysis.diagnosis.counterfactual}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Psychology -->
+                    <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                         <h3 class="text-slate-400 text-xs font-mono mb-4 flex items-center gap-2">
+                             <i data-lucide="brain-circuit" class="w-4 h-4"></i> PSYCHOLOGY PROFILE
+                        </h3>
+                        <p class="text-slate-300 text-sm leading-relaxed">${analysis.psychology}</p>
+                    </div>
+
+                    <!-- Action Plan -->
+                    <div class="bg-slate-800 p-6 rounded-xl border border-emerald-500/30">
+                         <h3 class="text-emerald-400 text-xs font-mono mb-4 flex items-center gap-2">
+                             <i data-lucide="target" class="w-4 h-4"></i> ACTION PLAN
+                        </h3>
+                        <ul class="space-y-3">
+                            ${analysis.actionPlan.map(action => `
+                                <li class="flex items-start gap-3">
+                                    <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500 shrink-0 mt-0.5"></i>
+                                    <span class="text-slate-200 text-sm">${action}</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                 </div>
+
+                 ${matrixCode === 'C' ? `
+                    <div class="bg-rose-900/20 border border-rose-500/50 p-4 rounded-lg flex items-start gap-3">
+                        <i data-lucide="alert-triangle" class="w-6 h-6 text-rose-500 shrink-0"></i>
+                        <div>
+                            <h4 class="text-rose-400 font-bold text-sm">CRITICAL WARNING</h4>
+                            <p class="text-rose-200/80 text-xs mt-1">
+                                Making money on bad habits is the fastest way to blow up your account later. This win is toxic. Reinforce your rules immediately.
+                            </p>
+                        </div>
+                    </div>
+                 ` : ''}
+            </div>
+            `;
+        }
+
+        // --- ACTIONS ---
+
+        async function handleAnalyze(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const input = {
+                ticker: formData.get('ticker'),
+                action: formData.get('action'),
+                price: formData.get('price'),
+                quantity: formData.get('quantity'),
+                rationale: formData.get('rationale'),
+                result: formData.get('result'),
+                reflection: formData.get('reflection'),
+            };
+
+            state.isLoading = true;
+            state.error = null;
+            render(); // Update UI to show loading
+
+            try {
+                // IMPORTANT: For GitHub Pages or static deployment, you must ensure process.env.API_KEY is available.
+                // Since this is a browser env, `process` might not exist. 
+                // We access it assuming your build system injected it or you can manually replace the string below.
+                const apiKey = (typeof process !== 'undefined' && process.env && process.env.API_KEY) 
+                    ? process.env.API_KEY 
+                    : ''; 
+                
+                if (!apiKey) {
+                    throw new Error("API Key missing. Please configure process.env.API_KEY or edit the index.html file.");
+                }
+
+                const ai = new GoogleGenAI({ apiKey });
+                
+                // Define Schema
+                const analysisSchema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        categorization: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { type: Type.STRING },
+                                matrixCode: { type: Type.STRING, enum: ['A', 'B', 'C', 'D'] },
+                                matrixDescription: { type: Type.STRING },
+                            },
+                            required: ["type", "matrixCode", "matrixDescription"],
+                        },
+                        diagnosis: {
+                            type: Type.OBJECT,
+                            properties: {
+                                attribution: { type: Type.STRING },
+                                counterfactual: { type: Type.STRING },
+                            },
+                            required: ["attribution", "counterfactual"],
+                        },
+                        scoring: {
+                            type: Type.OBJECT,
+                            properties: {
+                                logic: { type: Type.NUMBER },
+                                execution: { type: Type.NUMBER },
+                                risk: { type: Type.NUMBER },
+                                total: { type: Type.NUMBER },
+                                summary: { type: Type.STRING },
+                            },
+                            required: ["logic", "execution", "risk", "total", "summary"],
+                        },
+                        psychology: { type: Type.STRING },
+                        actionPlan: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING },
+                        },
+                    },
+                    required: ["categorization", "diagnosis", "scoring", "psychology", "actionPlan"],
+                };
+
+                const prompt = `
+                    Analyze this trade:
+                    1. Ticker: ${input.ticker}
+                    2. Action: ${input.action} @ ${input.price} (Qty: ${input.quantity})
+                    3. Rationale: ${input.rationale}
+                    4. Result/Status: ${input.result}
+                    5. Self-Reflection: ${input.reflection}
+                `;
+
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash",
+                    contents: prompt,
+                    config: {
+                        systemInstruction: CIO_SYSTEM_INSTRUCTION,
+                        responseMimeType: "application/json",
+                        responseSchema: analysisSchema,
+                        temperature: 0.7, 
+                    },
+                });
+
+                const text = response.text;
+                if (!text) throw new Error("No response from AI");
+                const resultData = JSON.parse(text);
+
+                const newItem = {
+                    id: crypto.randomUUID(),
+                    timestamp: Date.now(),
+                    input: input,
+                    analysis: resultData
+                };
+
+                state.history.unshift(newItem); // Add to top
+                saveHistory();
+                state.currentAnalysis = newItem;
+                state.currentView = 'result';
+
+            } catch (err) {
+                console.error(err);
+                state.error = err.message || "Failed to analyze trade.";
+            } finally {
+                state.isLoading = false;
+                render();
+            }
+        }
+
+        // --- STORAGE & HELPERS ---
+
+        function loadHistory() {
+            try {
+                const saved = localStorage.getItem('tradeMindHistory');
+                if (saved) state.history = JSON.parse(saved);
+            } catch (e) {
+                console.error("Failed to load history", e);
+            }
+        }
+
+        function saveHistory() {
+            localStorage.setItem('tradeMindHistory', JSON.stringify(state.history));
+        }
+
+        // Expose functions to window for onclick handlers
+        window.app = {
+            viewTrade: (id) => {
+                const item = state.history.find(h => h.id === id);
+                if (item) {
+                    state.currentAnalysis = item;
+                    state.currentView = 'result';
+                    state.error = null;
+                    render();
+                }
+            },
+            resetToForm: () => {
+                state.currentView = 'form';
+                state.error = null;
+                render();
+            }
+        };
+
+    </script>
+</body>
+</html>
